@@ -2,3 +2,5 @@
 .vscode
 __pycache__
 */__pycache__
+/data/db
+Quiz_me_on.egg-info/
