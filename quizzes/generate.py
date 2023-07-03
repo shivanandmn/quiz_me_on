@@ -2,6 +2,7 @@ from langchain.chat_models import ChatOpenAI
 from quizzes.schematic_prompt import get_format_parser, prompt_template
 from langchain.prompts import ChatPromptTemplate
 from get_parms import openai_key
+import json
 
 
 class QuizGenerator:
@@ -21,8 +22,11 @@ class QuizGenerator:
     def generate_quizzes(self, topic_prompt):
         prompt_text = self.get_prompt_template(topic_prompt)
         response = self.llm(prompt_text)
-        output_dict = self.output_parser.parse(response.content)
-        return output_dict
+        try:
+            output_dict = self.output_parser.parse(response.content)
+            return output_dict
+        except Exception as e:
+            return f"Error: {e}"
 
 
 if __name__ == '__main__':

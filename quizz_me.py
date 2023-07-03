@@ -25,7 +25,14 @@ from telegram.ext import (
     PollHandler,
     filters
 )
+import logging
+from telegram import __version__ as TG_VER
 
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 from quizzes.generate import QuizGenerator
 config = {
     "model_name": "gpt-3.5-turbo",
@@ -130,24 +137,29 @@ def clean_prompt(data):
 
 def word_count(x): return len(x.split())
 
+def get_quiz_save_in_db(prompt):
+    quizzes = quiz_generator.generate_quizzes(topic_prompt=prompt)
+    if isinstance(quizzes, dict):
+        document = {"prompt": prompt, "questions": quizzes, 
+                    "datetime": datetime.datetime.now(tz=datetime.timezone.utc)}
+        mongo_collection().insert_one(document)
+        return [Quiz(**x) for x in quizzes]
+    else:
+        return quizzes
+    
 
 async def handle_message(update, context):
     context.bot_data["question_index"] = 0
     message = update.message
     prompt = clean_prompt(message.text)
     if word_count(prompt) >= config["minumum_prompt_words"]:
-        await context.bot.send_message(chat_id=update.effective_chat.id, text="Please wait getting data ready")
-        quizzes = quiz_generator.generate_quizzes(
-            topic_prompt=prompt)
-        if quizzes:
-            document = {"questions": quizzes, "prompt": prompt,
-                        "datetime": datetime.datetime.now(tz=datetime.timezone.utc)}
-            mongo_collection().insert_one(document)
-            global data_quiz
-            data_quiz = [Quiz(**x) for x in quizzes]
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="Please wait getting data ready!")
+        global data_quiz
+        data_quiz = get_quiz_save_in_db(prompt)
+        if isinstance(data_quiz, dict):
             await context.bot.send_message(chat_id=update.effective_chat.id, text="Ready!, you can start /quiz")
         else:
-            await context.bot.send_message(chat_id=update.effective_chat.id, text=f"Didn't get quizzes for the topic :{prompt}")
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=f"Didn't get quizzes for the topic :{prompt}\n\n {data_quiz}")
     else:
         await context.bot.send_message(chat_id=update.effective_chat.id, text=f"Incorrect prompt! minimum three words, but {word_count(prompt)} given")
 
