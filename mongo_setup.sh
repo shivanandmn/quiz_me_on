@@ -10,7 +10,7 @@ echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-6.0.gp
 
 sudo apt-get update
 sudo apt-get install -y mongodb-org
-mkdir -p data/db
+# mkdir -p data/db
 # mongod --dbpath data/db
 # Ensure mongod config is picked up:
 sudo systemctl daemon-reload
