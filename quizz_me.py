@@ -3,6 +3,7 @@ from data import Quiz
 import datetime
 from get_parms import bot_token
 import re
+import json
 from quizzes.fetch_quizzes import questions
 from telegram import (
     KeyboardButton,
@@ -139,9 +140,10 @@ def word_count(x): return len(x.split())
 
 def get_quiz_save_in_db(prompt):
     quizzes = quiz_generator.generate_quizzes(topic_prompt=prompt)
-    if isinstance(quizzes, dict):
+    if isinstance(quizzes, list):
+        datetime_str = str(datetime.datetime.now(tz=datetime.timezone.utc))
         document = {"prompt": prompt, "questions": quizzes, 
-                    "datetime": datetime.datetime.now(tz=datetime.timezone.utc)}
+                    "datetime": json.dumps(f'"{datetime_str}"')}
         mongo_collection().insert_one(document)
         return [Quiz(**x) for x in quizzes]
     else:
@@ -156,7 +158,7 @@ async def handle_message(update, context):
         await context.bot.send_message(chat_id=update.effective_chat.id, text="Please wait getting data ready!")
         global data_quiz
         data_quiz = get_quiz_save_in_db(prompt)
-        if isinstance(data_quiz, dict):
+        if isinstance(data_quiz, list):
             await context.bot.send_message(chat_id=update.effective_chat.id, text="Ready!, you can start /quiz")
         else:
             await context.bot.send_message(chat_id=update.effective_chat.id, text=f"Didn't get quizzes for the topic :{prompt}\n\n {data_quiz}")
