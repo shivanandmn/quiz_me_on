@@ -47,16 +47,22 @@ class JSONAppender:
 
     def _write_json_file(self, data):
         json.dump(data, open(self.file_path, "w"))
+    
+    def close(self,):
+        pass
 
 
 def mongo_collection():
     db_name = os.environ.get("DB_NAME", "database")
     quizzes_collection = os.environ.get("COLLECTION_NAME", "collection")
-    client = MongoClient()
+    mongodb_host = os.environ.get("MONGODB_HOST", None)
+    client = MongoClient(
+        host=mongodb_host
+    )
     try:
         # Check if the client is connected
         connected = client.server_info()  # This will trigger an exception if not connected
-        print('MongoDB client connected:', connected)
+        print('MongoDB client connected:\n', connected)
         db = client[db_name]
         collection = db[quizzes_collection]
     except Exception as e:

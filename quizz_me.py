@@ -6,13 +6,9 @@ import re
 import json
 from quizzes.fetch_quizzes import questions
 from telegram import (
-    KeyboardButton,
-    KeyboardButtonPollType,
     Poll,
     InlineKeyboardMarkup,
-    ReplyKeyboardMarkup,
     InlineKeyboardButton,
-    ReplyKeyboardRemove,
     Update
 )
 from telegram.ext import (
@@ -21,32 +17,26 @@ from telegram.ext import (
     CallbackQueryHandler,
     ContextTypes,
     MessageHandler,
-    PollAnswerHandler,
-    ConversationHandler,
     PollHandler,
     filters
 )
 import logging
-from telegram import __version__ as TG_VER
-
+mongodb = mongo_collection()
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO
+    level=logging.WARNING,
+    filename="bot.log",
+    filemode="a"
 )
 logger = logging.getLogger(__name__)
 from quizzes.generate import QuizGenerator
 config = {
     "model_name": "gpt-3.5-turbo",
-    "temperature": 0.6,
+    "temperature": 0.2,
     "minumum_prompt_words": 3
 
 }
 quiz_generator = QuizGenerator(config)
-
-
-def quiz_iterator():
-    for qz in questions:
-        yield
 
 
 global data_quiz
@@ -58,11 +48,13 @@ START_ROUTES, MIDDLE_ROUTES, END_ROUTES = range(3)
 ONE, TWO, THREE, FOUR = range(4)
 
 
-def is_correct_option_selected(option_idx, options):
+def score(update_obj):
+    option_idx = update_obj.poll.correct_option_id
+    options = update_obj.poll.options
     if options[option_idx].voter_count == 1:
-        return True
+        return 1
     else:
-        return False
+        return 0
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -76,14 +68,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not context.bot_data.get('question_index', 0):
         context.bot_data["question_index"] = 0
+        context.bot_data["score"] = 0
     question_index = context.bot_data["question_index"]
+    score = context.bot_data["score"]
     if question_index == len(data_quiz):
-        await context.bot.send_message(chat_id=update.effective_chat.id, text="Quizzes are Over!")
+        await context.bot.send_message(chat_id=update.effective_chat.id, text=f"Quizzes are Over!\nscore :{score}/{len(data_quiz)}")
         return
-    # print("question_text :", len(data_quiz[question_index].question_text))
-    # print("options       :", [len(x)
-    #       for x in data_quiz[question_index].options])
-    # print("explanation   :", len(data_quiz[question_index].explanation))
 
     message = await update.effective_message.reply_poll(
         data_quiz[question_index].question_text, data_quiz[question_index].options, type=Poll.QUIZ,
@@ -97,13 +87,6 @@ async def quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                           "explanation": data_quiz[question_index].explanation}
     }
     context.bot_data.update(payload)
-
-
-async def explanation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Ask the user for a description of a custom category."""
-    await update.message.reply_text(
-        'Alright, please send me the category first, for example "Most impressive skill"'
-    )
 
 
 async def receive_quiz_answer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -121,6 +104,8 @@ async def receive_quiz_answer(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
     await context.bot.stop_poll(quiz_data["chat_id"], quiz_data["message_id"])
     context.bot_data['question_index'] += 1
+    context.bot_data['score'] += score(update)
+    
     # print("context.bot_data['question_index']",
     #       context.bot_data['question_index'])
 
@@ -144,7 +129,7 @@ def get_quiz_save_in_db(prompt):
         datetime_str = str(datetime.datetime.now(tz=datetime.timezone.utc))
         document = {"prompt": prompt, "questions": quizzes, 
                     "datetime": json.dumps(f'"{datetime_str}"')}
-        mongo_collection().insert_one(document)
+        mongodb.insert_one(document)
         return [Quiz(**x) for x in quizzes]
     else:
         return quizzes
@@ -152,6 +137,7 @@ def get_quiz_save_in_db(prompt):
 
 async def handle_message(update, context):
     context.bot_data["question_index"] = 0
+    context.bot_data["score"] = 0
     message = update.message
     prompt = clean_prompt(message.text)
     if word_count(prompt) >= config["minumum_prompt_words"]:
